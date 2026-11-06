@@ -262,10 +262,10 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     <div>
       <span class="eyebrow">Android → Linux</span>
       <h1>O celular na <em>tela grande</em>, com som.</h1>
-      <p class="lead">Um único comando espelha a tela e o áudio do seu Android no PC, via cabo USB ou Wi-Fi. Feito para assistir no computador os vídeos que estão rodando no celular.</p>
+      <p class="lead">Espelhe a tela e o áudio do seu Android no PC, via cabo USB ou Wi-Fi, numa janelinha de controle ou num único comando. Feito para assistir no computador os vídeos que estão rodando no celular.</p>
       <div class="cta">
-        <a class="btn primary" href="#instalar">Instalar</a>
-        <a class="btn" href="https://github.com/uesleinasch/phone-stream">Ver no GitHub</a>
+        <a class="btn primary" href="https://github.com/uesleinasch/phone-stream/releases/latest/download/phone-stream-x86_64.AppImage">Baixar AppImage</a>
+        <a class="btn" href="#instalar">Instalar pelo terminal</a>
       </div>
     </div>
     <div class="term" aria-label="Exemplo de uso no terminal">
@@ -273,10 +273,10 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 <pre><span class="p">$</span> phone-stream --wifi -q 1080
 <span class="a">→</span> Ativando adb via Wi-Fi em 192.168.0.42:5555...
 <span class="a">→</span> Conectado em 192.168.0.42. Já pode desconectar o cabo.
-<span class="a">→</span> Transmitindo em 1080 (Alt+F alterna tela cheia)
+<span class="a">→</span> Transmitindo em 1080, proporção crop
 <span class="c">[server] INFO: Device: [google] Pixel 8 (Android 15)</span>
 <span class="c">INFO: Renderer: opengl</span>
-<span class="c">INFO: Texture: 1920x864</span></pre>
+<span class="c">INFO: Texture: 1920x1080</span></pre>
     </div>
   </div>
 </div>
@@ -298,13 +298,13 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
       </div>
       <div class="card">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
-        <h3>720p, 1080p ou nativo</h3>
-        <p>Escolha a qualidade com <code>-q</code>. O padrão é 1080p a 8 Mbps.</p>
+        <h3>16:9 sem faixas</h3>
+        <p>Recorta a tela 20:9 do celular em 16:9 ou cria uma tela virtual 1920×1080. Qualidade de 720p ao nativo.</p>
       </div>
       <div class="card">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
-        <h3>Sem sudo</h3>
-        <p>Baixa o scrcpy oficial com checksum verificado e instala tudo em <code>~/.local</code>.</p>
+        <h3>Interface ou terminal</h3>
+        <p>AppImage com o scrcpy embutido, ou um script bash instalado em <code>~/.local</code> sem sudo.</p>
       </div>
     </div>
   </div>
@@ -317,8 +317,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     <div class="steps">
       <div class="step">
         <div>
-          <h3>Baixe e instale</h3>
-          <p>O instalador baixa a última versão do scrcpy e cria os comandos <code>phone-stream</code> e <code>scrcpy</code> em <code>~/.local/bin</code>.</p>
+          <h3>Baixe o AppImage</h3>
+          <p>Já vem com o scrcpy e o adb. Os botões de controle durante a transmissão usam o <code>xdotool</code> (<code>sudo apt install xdotool</code>), em sessões X11.</p>
+          <div class="code"><button class="copy" type="button">Copiar</button><pre>wget https://github.com/uesleinasch/phone-stream/releases/latest/download/phone-stream-x86_64.AppImage
+chmod +x phone-stream-x86_64.AppImage
+./phone-stream-x86_64.AppImage</pre></div>
+          <p style="margin-top:12px">Prefere só o terminal? O instalador baixa o scrcpy e cria os comandos <code>phone-stream</code> e <code>scrcpy</code> em <code>~/.local/bin</code>:</p>
           <div class="code"><button class="copy" type="button">Copiar</button><pre>git clone https://github.com/uesleinasch/phone-stream.git
 cd phone-stream
 ./phone-stream --install</pre></div>
@@ -343,20 +347,22 @@ cd phone-stream
 <section id="usar">
   <div class="wrap">
     <h2>Usar</h2>
-    <p class="sub">Por padrão abre em tela cheia, a 1080p, com a tela do celular apagada e o protetor de tela do PC desativado.</p>
+    <p class="sub">Na interface, escolha o celular, a qualidade e a proporção e clique em <strong>Iniciar transmissão</strong>. No terminal, o padrão é 1080p, corte 16:9, em janela, com a tela do celular apagada e o protetor de tela do PC desativado.</p>
     <div class="two">
       <div class="code"><button class="copy" type="button">Copiar</button><pre><span class="c"># via cabo USB</span>
 phone-stream
 
+<span class="c"># em tela cheia</span>
+phone-stream -f
+
 <span class="c"># via Wi-Fi (1ª vez com o cabo)</span>
 phone-stream --wifi
 
-<span class="c"># escolher a qualidade</span>
-phone-stream -q 720
-phone-stream -q max
+<span class="c"># qualidade e proporção</span>
+phone-stream -q max --fit original
 
-<span class="c"># refazer a configuração do Wi-Fi</span>
-phone-stream --wifi-reset
+<span class="c"># app numa tela virtual 1920x1080</span>
+phone-stream --app com.google.android.youtube
 
 <span class="c"># repassar opções ao scrcpy</span>
 phone-stream -- --max-fps=30</pre></div>
@@ -364,8 +370,22 @@ phone-stream -- --max-fps=30</pre></div>
         <li><kbd>Alt</kbd>+<kbd>F</kbd><span>alterna tela cheia</span></li>
         <li><kbd>Alt</kbd>+<kbd>O</kbd><span>apaga a tela do celular</span></li>
         <li><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd><span>acende a tela do celular</span></li>
+        <li><kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd><span>volume</span></li>
         <li>Fechar a janela<span>encerra a transmissão</span></li>
+        <li style="border-style:dashed">Use o Alt esquerdo<span>o Alt direito do ABNT2 é AltGr</span></li>
       </ul>
+    </div>
+
+    <h3 style="margin-top:36px">Proporção</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Opção</th><th>O que faz</th></tr></thead>
+        <tbody>
+          <tr><td class="badge-cell"><code>--fit crop</code><span class="tag">padrão</span></td><td>Recorta o centro da tela 20:9 do celular em 16:9. Com o celular deitado e o vídeo em tela cheia nele, a imagem ocupa o monitor inteiro.</td></tr>
+          <tr><td class="badge-cell"><code>--fit original</code></td><td>Tela inteira do celular, com faixas pretas num monitor 16:9.</td></tr>
+          <tr><td class="badge-cell"><code>--app PACOTE</code></td><td>Cria uma tela virtual 1920×1080 no celular e abre o app nela. A tela física fica livre; alguns apps estranham rodar numa tela virtual.</td></tr>
+        </tbody>
+      </table>
     </div>
 
     <h3 style="margin-top:36px">Qualidade</h3>

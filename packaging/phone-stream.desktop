@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=phone-stream
+Comment=Espelhe a tela e o áudio do Android no PC
+Exec=phone_stream_gui
+Icon=phone-stream
+Categories=AudioVideo;Video;
+Terminal=false

@@ -1,0 +1,5 @@
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export PHONE_STREAM_SCRCPY_DIR="$HERE/usr/lib/scrcpy"
+export PHONE_STREAM_BIN="$HERE/usr/bin/phone-stream"
+exec "$HERE/usr/lib/phone-stream-gui/phone_stream_gui" "$@"

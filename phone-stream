@@ -3,26 +3,27 @@ set -euo pipefail
 
 REPO="Genymobile/scrcpy"
 INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/phone-stream"
-SCRCPY_DIR="$INSTALL_ROOT/scrcpy"
+SCRCPY_DIR="${PHONE_STREAM_SCRCPY_DIR:-$INSTALL_ROOT/scrcpy}"
 SCRCPY="$SCRCPY_DIR/scrcpy"
 BIN_DIR="$HOME/.local/bin"
 STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/phone-stream"
 LAST_IP_FILE="$STATE_DIR/last-ip"
 ADB_PORT=5555
+VIRTUAL_DISPLAY_SIZE=1920x1080
+WINDOW_TITLE=Celular
 
 export ADB="$SCRCPY_DIR/adb"
 # O driver pipewire do SDL trava na inicialização quando o PipeWire roda sem ser o servidor de som.
 export SDL_AUDIO_DRIVER="${SDL_AUDIO_DRIVER:-pulseaudio}"
 
-DEFAULT_ARGS=(
-  --fullscreen
-  --turn-screen-off
-  --audio-source=output
-  --disable-screensaver
-  --window-title=Celular
-)
+MODE=usb
+SERIAL=""
 QUALITY=1080
+FIT=crop
+APP=""
+FULLSCREEN=0
 QUALITY_ARGS=()
+FIT_ARGS=()
 
 info() { printf '\e[36m→ %s\e[0m\n' "$*" >&2; }
 die() { printf '\e[31m✗ %s\e[0m\n' "$*" >&2; exit 1; }
@@ -30,33 +31,51 @@ adb() { "$ADB" "$@"; }
 
 usage() {
   cat <<EOF
-Uso: phone-stream [opção] [-- opções extras do scrcpy]
+Uso: phone-stream [opções] [-- opções extras do scrcpy]
 
-  (sem opção)     Transmite tela + áudio do celular via USB
-  -w, --wifi      Transmite via Wi-Fi (na 1ª vez, deixe o cabo USB conectado)
-  --wifi-reset    Esquece o IP salvo e refaz a configuração Wi-Fi pelo cabo
-  -q, --quality Q Qualidade do vídeo: 720, 1080 (padrão) ou max
-  -i, --install   Instala/atualiza o scrcpy e cria os atalhos em $BIN_DIR
-  -h, --help      Mostra esta ajuda
+Transmissão:
+  (sem opção)       Transmite tela + áudio do celular via USB
+  -w, --wifi        Transmite via Wi-Fi (na 1ª vez, deixe o cabo USB conectado)
+  --wifi-reset      Esquece o IP salvo e refaz a configuração Wi-Fi pelo cabo
+  -s, --serial S    Usa um aparelho específico (veja --devices)
+  -q, --quality Q   Qualidade: 720, 1080 (padrão) ou max
+  --fit MODO        Proporção: crop (padrão), original ou virtual
+  --app PACOTE      Abre o app num display virtual 16:9 (implica --fit virtual)
+  -f, --fullscreen  Abre em tela cheia
+
+Consulta:
+  --devices         Lista aparelhos: serial, conexão, estado, modelo (TSV)
+  --list-apps       Lista apps do celular: pacote, nome, tipo (TSV)
+  --wifi-connect    Prepara/conecta o Wi-Fi e imprime o serial, sem transmitir
+
+Outros:
+  -i, --install     Instala/atualiza o scrcpy e cria os atalhos em $BIN_DIR
+  -h, --help        Mostra esta ajuda
 
 Qualidade:
   720    1280px no lado maior,  4 Mbps   (Wi-Fi fraco)
   1080   1920px no lado maior,  8 Mbps   (padrão)
   max    resolução nativa,     16 Mbps   (melhor via USB)
 
-Atalhos na janela: Alt+F tela cheia · Alt+Shift+O liga a tela do celular · fechar a janela encerra
+Proporção:
+  crop      recorta o centro da tela do celular em 16:9 (sem faixas pretas no monitor)
+  original  tela inteira do celular (faixas pretas num monitor 16:9)
+  virtual   cria um display $VIRTUAL_DISPLAY_SIZE no celular; use com --app
+
+Atalhos na janela (Alt esquerdo): Alt+F tela cheia · Alt+O apaga a tela do celular · Alt+Shift+O acende
 
 Exemplos:
   phone-stream
-  phone-stream --wifi --quality 720
-  phone-stream -q max
-  phone-stream -- --max-fps=30
+  phone-stream --wifi -q 720
+  phone-stream -f --fit original
+  phone-stream --app com.google.android.youtube
 
 Requer Android 11+ para áudio. Apps com DRM (Netflix, Prime, Disney+...) aparecem com tela preta.
 EOF
 }
 
 install_scrcpy() {
+  [[ -z ${PHONE_STREAM_SCRCPY_DIR:-} ]] || die "Este phone-stream usa um scrcpy embutido em $SCRCPY_DIR"
   [[ $(uname -m) == x86_64 ]] || die "Só há build oficial do scrcpy para Linux x86_64"
   command -v curl >/dev/null || die "curl não encontrado (sudo apt install curl)"
 
@@ -91,6 +110,31 @@ install_scrcpy() {
   printf '#!/bin/sh\nADB=%q SDL_AUDIO_DRIVER="${SDL_AUDIO_DRIVER:-pulseaudio}" exec %q "$@"\n' "$ADB" "$SCRCPY" >"$BIN_DIR/scrcpy"
   chmod +x "$BIN_DIR/scrcpy"
   ln -sf "$(readlink -f "$0")" "$BIN_DIR/phone-stream"
+}
+
+list_devices() {
+  adb devices -l | awk 'NR > 1 && NF {
+    conn = / usb:/ ? "usb" : "wifi"
+    model = "-"
+    for (i = 3; i <= NF; i++) if ($i ~ /^model:/) { model = substr($i, 7); gsub("_", " ", model) }
+    print $1 "\t" conn "\t" $2 "\t" model
+  }'
+}
+
+list_apps() {
+  local out
+  out=$("$SCRCPY" --serial="$1" --list-apps 2>&1) || {
+    printf '%s\n' "$out" | grep -E 'ERROR|WARN' >&2 || printf '%s\n' "$out" >&2
+    return 1
+  }
+  awk '/^ [*-] / {
+    type = $1 == "-" ? "user" : "system"
+    pkg = $NF
+    name = $0
+    sub(/^ [*-] +/, "", name)
+    sub(/ +[^ ]+$/, "", name)
+    print pkg "\t" name "\t" type
+  }' <<<"$out"
 }
 
 usb_serial() {
@@ -131,27 +175,7 @@ wifi_connect() {
   return 1
 }
 
-set_quality_args() {
-  case $QUALITY in
-    720 | 720p) QUALITY_ARGS=(--max-size=1280 --video-bit-rate=4M) ;;
-    1080 | 1080p) QUALITY_ARGS=(--max-size=1920 --video-bit-rate=8M) ;;
-    max) QUALITY_ARGS=(--video-bit-rate=16M) ;;
-    *) die "Qualidade inválida: '$QUALITY' (use 720, 1080 ou max)" ;;
-  esac
-}
-
-stream() {
-  info "Transmitindo em $QUALITY (Alt+F alterna tela cheia; feche a janela para encerrar)..."
-  exec "$SCRCPY" "${DEFAULT_ARGS[@]}" "${QUALITY_ARGS[@]}" "$@"
-}
-
-stream_usb() {
-  local serial
-  serial=$(usb_serial)
-  stream --serial="$serial" "$@"
-}
-
-stream_wifi() {
+wifi_serial() {
   local ip=""
   [[ -f $LAST_IP_FILE ]] && ip=$(<"$LAST_IP_FILE")
 
@@ -162,17 +186,108 @@ stream_wifi() {
     info "Conectado em $ip. Já pode desconectar o cabo."
   fi
 
-  stream --serial="$ip:$ADB_PORT" "$@"
+  echo "$ip:$ADB_PORT"
+}
+
+resolve_serial() {
+  if [[ -n $SERIAL ]]; then
+    echo "$SERIAL"
+  elif [[ $MODE == wifi ]]; then
+    wifi_serial
+  else
+    usb_serial
+  fi
+}
+
+set_quality_args() {
+  case $QUALITY in
+    720 | 720p) QUALITY_ARGS=(--max-size=1280 --video-bit-rate=4M) ;;
+    1080 | 1080p) QUALITY_ARGS=(--max-size=1920 --video-bit-rate=8M) ;;
+    max) QUALITY_ARGS=(--video-bit-rate=16M) ;;
+    *) die "Qualidade inválida: '$QUALITY' (use 720, 1080 ou max)" ;;
+  esac
+}
+
+check_fit() {
+  case $FIT in
+    crop | original | virtual) ;;
+    *) die "Proporção inválida: '$FIT' (use crop, original ou virtual)" ;;
+  esac
+}
+
+set_crop_args() {
+  local size w h short long target
+  size=$({ adb -s "$1" shell wm size 2>/dev/null || true; } | awk -F': ' '/size/ {s = $2} END {print s}' | tr -d '\r')
+  if [[ ! $size =~ ^([0-9]+)x([0-9]+)$ ]]; then
+    info "Não consegui ler o tamanho da tela; usando a proporção original"
+    return
+  fi
+  w=${BASH_REMATCH[1]} h=${BASH_REMATCH[2]}
+  if ((w < h)); then short=$w long=$h; else short=$h long=$w; fi
+  local crop_long=$(((short * 16 / 9 + 1) / 2 * 2)) crop_short=$short
+  if ((crop_long > long)); then
+    crop_long=$long
+    crop_short=$(((long * 9 / 16 + 1) / 2 * 2))
+  fi
+  ((crop_long < long || crop_short < short)) || return 0
+
+  if ((w < h)); then
+    FIT_ARGS=(--crop="$crop_short:$crop_long:$(((w - crop_short) / 2)):$(((h - crop_long) / 2))")
+  else
+    FIT_ARGS=(--crop="$crop_long:$crop_short:$(((w - crop_long) / 2)):$(((h - crop_short) / 2))")
+  fi
+}
+
+set_fit_args() {
+  case $FIT in
+    crop) set_crop_args "$1" ;;
+    virtual)
+      FIT_ARGS=(--new-display="$VIRTUAL_DISPLAY_SIZE")
+      [[ -z $APP ]] || FIT_ARGS+=(--start-app="+$APP")
+      ;;
+  esac
+}
+
+stream() {
+  local serial=$1
+  shift
+  set_fit_args "$serial"
+
+  local args=(
+    --serial="$serial"
+    --window-title="$WINDOW_TITLE"
+    --audio-source=output
+    --disable-screensaver
+    "${QUALITY_ARGS[@]}"
+    "${FIT_ARGS[@]}"
+  )
+  [[ $FIT == virtual ]] || args+=(--turn-screen-off)
+  ((FULLSCREEN == 0)) || args+=(--fullscreen)
+
+  info "Transmitindo em $QUALITY, proporção $FIT (Alt+F alterna tela cheia; feche a janela para encerrar)..."
+  exec "$SCRCPY" "${args[@]}" "$@"
+}
+
+need_value() {
+  (($1 >= 2)) || die "A opção $2 precisa de um valor"
 }
 
 main() {
-  local mode=usb
+  local action=stream serial
   while (($#)); do
     case $1 in
-      -w | --wifi) mode=wifi ;;
-      --wifi-reset) mode=wifi; rm -f "$LAST_IP_FILE" ;;
-      -q | --quality) (($# >= 2)) || die "Informe a qualidade: -q 720|1080|max"; QUALITY=$2; shift ;;
+      -w | --wifi) MODE=wifi ;;
+      --wifi-reset) MODE=wifi; rm -f "$LAST_IP_FILE" ;;
+      --wifi-connect) MODE=wifi; action=wifi-connect ;;
+      -s | --serial) need_value $# "$1"; SERIAL=$2; shift ;;
+      -q | --quality) need_value $# "$1"; QUALITY=$2; shift ;;
       --quality=*) QUALITY=${1#*=} ;;
+      --fit) need_value $# "$1"; FIT=$2; shift ;;
+      --fit=*) FIT=${1#*=} ;;
+      --app) need_value $# "$1"; APP=$2; FIT=virtual; shift ;;
+      -f | --fullscreen) FULLSCREEN=1 ;;
+      --devices) action=devices ;;
+      --list-apps) action=list-apps ;;
       -i | --install) install_scrcpy; return ;;
       -h | --help) usage; return ;;
       --) shift; break ;;
@@ -182,14 +297,25 @@ main() {
   done
 
   set_quality_args
-  [[ -x $SCRCPY ]] || install_scrcpy
+  check_fit
+  if [[ ! -x $SCRCPY ]]; then
+    [[ $action == stream ]] || die "scrcpy não instalado. Rode: phone-stream --install"
+    install_scrcpy
+  fi
   adb start-server >/dev/null 2>&1 || true
 
-  if [[ $mode == wifi ]]; then
-    stream_wifi "$@"
-  else
-    stream_usb "$@"
-  fi
+  case $action in
+    devices) list_devices ;;
+    wifi-connect) resolve_serial ;;
+    list-apps)
+      serial=$(resolve_serial)
+      list_apps "$serial"
+      ;;
+    stream)
+      serial=$(resolve_serial)
+      stream "$serial" "$@"
+      ;;
+  esac
 }
 
 main "$@"
