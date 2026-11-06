@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="Genymobile/scrcpy"
+INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/phone-stream"
+SCRCPY_DIR="$INSTALL_ROOT/scrcpy"
+SCRCPY="$SCRCPY_DIR/scrcpy"
+BIN_DIR="$HOME/.local/bin"
+STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/phone-stream"
+LAST_IP_FILE="$STATE_DIR/last-ip"
+ADB_PORT=5555
+
+export ADB="$SCRCPY_DIR/adb"
+# O driver pipewire do SDL trava na inicialização quando o PipeWire roda sem ser o servidor de som.
+export SDL_AUDIO_DRIVER="${SDL_AUDIO_DRIVER:-pulseaudio}"
+
+DEFAULT_ARGS=(
+  --fullscreen
+  --turn-screen-off
+  --audio-source=output
+  --disable-screensaver
+  --window-title=Celular
+)
+QUALITY=1080
+QUALITY_ARGS=()
+
+info() { printf '\e[36m→ %s\e[0m\n' "$*" >&2; }
+die() { printf '\e[31m✗ %s\e[0m\n' "$*" >&2; exit 1; }
+adb() { "$ADB" "$@"; }
+
+usage() {
+  cat <<EOF
+Uso: phone-stream [opção] [-- opções extras do scrcpy]
+
+  (sem opção)     Transmite tela + áudio do celular via USB
+  -w, --wifi      Transmite via Wi-Fi (na 1ª vez, deixe o cabo USB conectado)
+  --wifi-reset    Esquece o IP salvo e refaz a configuração Wi-Fi pelo cabo
+  -q, --quality Q Qualidade do vídeo: 720, 1080 (padrão) ou max
+  -i, --install   Instala/atualiza o scrcpy e cria os atalhos em $BIN_DIR
+  -h, --help      Mostra esta ajuda
+
+Qualidade:
+  720    1280px no lado maior,  4 Mbps   (Wi-Fi fraco)
+  1080   1920px no lado maior,  8 Mbps   (padrão)
+  max    resolução nativa,     16 Mbps   (melhor via USB)
+
+Atalhos na janela: Alt+F tela cheia · Alt+Shift+O liga a tela do celular · fechar a janela encerra
+
+Exemplos:
+  phone-stream
+  phone-stream --wifi --quality 720
+  phone-stream -q max
+  phone-stream -- --max-fps=30
+
+Requer Android 11+ para áudio. Apps com DRM (Netflix, Prime, Disney+...) aparecem com tela preta.
+EOF
+}
+
+install_scrcpy() {
+  [[ $(uname -m) == x86_64 ]] || die "Só há build oficial do scrcpy para Linux x86_64"
+  command -v curl >/dev/null || die "curl não encontrado (sudo apt install curl)"
+
+  local tag current
+  tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")
+  tag=${tag##*/}
+  [[ $tag == v* ]] || die "Não consegui descobrir a última versão do scrcpy"
+
+  current=$([[ -x $SCRCPY ]] && "$SCRCPY" --version 2>/dev/null | awk 'NR==1{print $2}' || true)
+  if [[ $current == "${tag#v}" ]]; then
+    info "scrcpy $tag já está instalado"
+  else
+    local asset="scrcpy-linux-x86_64-$tag.tar.gz"
+    local base="https://github.com/$REPO/releases/download/$tag"
+    TMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$TMP_DIR"' EXIT
+
+    info "Baixando scrcpy $tag..."
+    curl -fL --progress-bar -o "$TMP_DIR/$asset" "$base/$asset"
+    curl -fsSL -o "$TMP_DIR/SHA256SUMS.txt" "$base/SHA256SUMS.txt"
+    (cd "$TMP_DIR" && grep " $asset\$" SHA256SUMS.txt | sha256sum -c --quiet -) || die "Checksum do download não confere"
+
+    tar xzf "$TMP_DIR/$asset" -C "$TMP_DIR"
+    mkdir -p "$INSTALL_ROOT"
+    rm -rf "$SCRCPY_DIR"
+    mv "$TMP_DIR/scrcpy-linux-x86_64-$tag" "$SCRCPY_DIR"
+    info "scrcpy $tag instalado em $SCRCPY_DIR"
+  fi
+
+  mkdir -p "$BIN_DIR"
+  rm -f "$BIN_DIR/scrcpy"
+  printf '#!/bin/sh\nADB=%q SDL_AUDIO_DRIVER="${SDL_AUDIO_DRIVER:-pulseaudio}" exec %q "$@"\n' "$ADB" "$SCRCPY" >"$BIN_DIR/scrcpy"
+  chmod +x "$BIN_DIR/scrcpy"
+  ln -sf "$(readlink -f "$0")" "$BIN_DIR/phone-stream"
+}
+
+usb_serial() {
+  local line
+  line=$(adb devices -l | awk '/ usb:/ && $2 == "device" && !f {print; f = 1}')
+  [[ -n $line ]] || line=$(adb devices -l | awk '/ usb:/ && !f {print; f = 1}')
+  [[ -n $line ]] || die "Nenhum celular no USB. Conecte o cabo e ative a 'Depuração USB' nas Opções do desenvolvedor."
+  case $line in
+    *unauthorized*) die "Celular não autorizado: desbloqueie a tela, aceite 'Permitir depuração USB' e rode de novo." ;;
+    *"no permissions"*) die "Sem permissão no USB: sudo apt install android-sdk-platform-tools-common, depois reconecte o cabo." ;;
+    *offline*) die "Celular 'offline' no adb. Desconecte e reconecte o cabo." ;;
+  esac
+  awk '{print $1}' <<<"$line"
+}
+
+wifi_setup() {
+  local serial ip
+  serial=$(usb_serial)
+  ip=$({ adb -s "$serial" shell ip -f inet addr show wlan0 2>/dev/null || true; } | awk '/inet / && !f {sub(/\/.*/, "", $2); print $2; f = 1}')
+  [[ -n $ip ]] || die "Não achei o IP do Wi-Fi do celular. O Wi-Fi dele está ligado?"
+
+  info "Ativando adb via Wi-Fi em $ip:$ADB_PORT..."
+  adb -s "$serial" tcpip "$ADB_PORT" >/dev/null
+
+  mkdir -p "$STATE_DIR"
+  echo "$ip" >"$LAST_IP_FILE"
+  echo "$ip"
+}
+
+wifi_connect() {
+  local target="$1:$ADB_PORT" attempts=${2:-1} i
+  for ((i = 0; i < attempts; i++)); do
+    timeout 5 "$ADB" connect "$target" >/dev/null 2>&1 || true
+    [[ $(adb -s "$target" get-state 2>/dev/null) == device ]] && return 0
+    adb disconnect "$target" >/dev/null 2>&1 || true
+    sleep 1
+  done
+  return 1
+}
+
+set_quality_args() {
+  case $QUALITY in
+    720 | 720p) QUALITY_ARGS=(--max-size=1280 --video-bit-rate=4M) ;;
+    1080 | 1080p) QUALITY_ARGS=(--max-size=1920 --video-bit-rate=8M) ;;
+    max) QUALITY_ARGS=(--video-bit-rate=16M) ;;
+    *) die "Qualidade inválida: '$QUALITY' (use 720, 1080 ou max)" ;;
+  esac
+}
+
+stream() {
+  info "Transmitindo em $QUALITY (Alt+F alterna tela cheia; feche a janela para encerrar)..."
+  exec "$SCRCPY" "${DEFAULT_ARGS[@]}" "${QUALITY_ARGS[@]}" "$@"
+}
+
+stream_usb() {
+  local serial
+  serial=$(usb_serial)
+  stream --serial="$serial" "$@"
+}
+
+stream_wifi() {
+  local ip=""
+  [[ -f $LAST_IP_FILE ]] && ip=$(<"$LAST_IP_FILE")
+
+  if [[ -z $ip ]] || ! wifi_connect "$ip"; then
+    [[ -n $ip ]] && info "Não conectei em $ip (celular reiniciou ou mudou de IP?). Refazendo pelo cabo USB..."
+    ip=$(wifi_setup)
+    wifi_connect "$ip" 5 || die "Falha ao conectar em $ip:$ADB_PORT. PC e celular estão na mesma rede?"
+    info "Conectado em $ip. Já pode desconectar o cabo."
+  fi
+
+  stream --serial="$ip:$ADB_PORT" "$@"
+}
+
+main() {
+  local mode=usb
+  while (($#)); do
+    case $1 in
+      -w | --wifi) mode=wifi ;;
+      --wifi-reset) mode=wifi; rm -f "$LAST_IP_FILE" ;;
+      -q | --quality) (($# >= 2)) || die "Informe a qualidade: -q 720|1080|max"; QUALITY=$2; shift ;;
+      --quality=*) QUALITY=${1#*=} ;;
+      -i | --install) install_scrcpy; return ;;
+      -h | --help) usage; return ;;
+      --) shift; break ;;
+      *) usage >&2; die "Opção desconhecida: $1" ;;
+    esac
+    shift
+  done
+
+  set_quality_args
+  [[ -x $SCRCPY ]] || install_scrcpy
+  adb start-server >/dev/null 2>&1 || true
+
+  if [[ $mode == wifi ]]; then
+    stream_wifi "$@"
+  else
+    stream_usb "$@"
+  fi
+}
+
+main "$@"

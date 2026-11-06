@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>phone-stream</title>
+<meta name="description" content="Espelhe a tela e o áudio do seu Android no PC Linux, via USB ou Wi-Fi, com um único comando.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #efede8;
+  --text: #1b1a17;
+  --muted: #5f5b53;
+  --border: #e2dfd8;
+  --accent: #e0492f;
+  --accent-soft: #fbe3dd;
+  --term-bg: #16151a;
+  --term-text: #e9e6df;
+  --term-muted: #8f8a80;
+  --term-accent: #6fd3ff;
+  --warn-bg: #fff4dc;
+  --warn-border: #f0c96a;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111014;
+    --surface: #19181d;
+    --surface-2: #222128;
+    --text: #efece6;
+    --muted: #a39e94;
+    --border: #2d2c33;
+    --accent: #ff6a4d;
+    --accent-soft: #3a1f1a;
+    --term-bg: #0b0a0e;
+    --warn-bg: #2a2416;
+    --warn-border: #6b5520;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111014;
+  --surface: #19181d;
+  --surface-2: #222128;
+  --text: #efece6;
+  --muted: #a39e94;
+  --border: #2d2c33;
+  --accent: #ff6a4d;
+  --accent-soft: #3a1f1a;
+  --term-bg: #0b0a0e;
+  --warn-bg: #2a2416;
+  --warn-border: #6b5520;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+code, pre, kbd { font-family: "JetBrains Mono", ui-monospace, monospace; }
+:not(pre) > code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: .1em .35em;
+  border-radius: 5px;
+  font-size: .88em;
+}
+kbd {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: .05em .4em;
+  font-size: .85em;
+}
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+
+header.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); text-decoration: none; }
+.brand svg { color: var(--accent); }
+.top nav { display: flex; gap: 18px; align-items: center; font-size: .95rem; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--text); }
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 40px;
+  align-items: center;
+  padding: 48px 0 64px;
+}
+.eyebrow {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: .8rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.3rem);
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  margin: 16px 0;
+  font-weight: 800;
+}
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lead { font-size: 1.12rem; color: var(--muted); margin: 0 0 28px; max-width: 32em; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--surface);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:hover { filter: brightness(1.05); }
+
+.term {
+  background: var(--term-bg);
+  color: var(--term-text);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  font-size: .86rem;
+}
+.term .bar { display: flex; gap: 6px; padding: 12px 14px; background: rgba(255,255,255,.04); }
+.term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3940; }
+.term pre { margin: 0; padding: 16px 18px 20px; overflow-x: auto; line-height: 1.7; }
+.term .p { color: var(--term-accent); }
+.term .c { color: var(--term-muted); }
+.term .a { color: #7fe3a0; }
+
+section { padding: 56px 0; border-top: 1px solid var(--border); }
+section h2 { font-size: 1.7rem; letter-spacing: -.02em; margin: 0 0 8px; }
+section > .wrap > p.sub { color: var(--muted); margin: 0 0 28px; }
+
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.card h3 { margin: 10px 0 6px; font-size: 1.02rem; }
+.card p { margin: 0; color: var(--muted); font-size: .94rem; }
+.card svg { color: var(--accent); }
+
+.steps { counter-reset: step; display: grid; gap: 18px; }
+.step { display: grid; grid-template-columns: 36px 1fr; gap: 14px; }
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+.step h3 { margin: 4px 0 6px; font-size: 1.05rem; }
+.step p { margin: 0 0 10px; color: var(--muted); }
+
+.code {
+  position: relative;
+  background: var(--term-bg);
+  color: var(--term-text);
+  border-radius: 10px;
+  font-size: .88rem;
+}
+.code pre { margin: 0; padding: 14px 56px 14px 16px; overflow-x: auto; }
+.code .c { color: var(--term-muted); }
+.copy {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(255,255,255,.08);
+  color: var(--term-text);
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font: 500 .75rem Inter, sans-serif;
+  cursor: pointer;
+}
+.copy:hover { background: rgba(255,255,255,.16); }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.badge-cell code { white-space: nowrap; }
+.tag { font-size: .72rem; background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 999px; font-weight: 600; margin-left: 6px; }
+
+.warn {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.warn h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.warn p { margin: 0; }
+.warn p + p { margin-top: 8px; }
+
+.keys { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.keys li { display: flex; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+.keys li span { color: var(--muted); text-align: right; }
+
+footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: .9rem; }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; padding-top: 24px; }
+  .grid { grid-template-columns: 1fr 1fr; }
+  .two { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .grid { grid-template-columns: 1fr; }
+  .top nav a.hide-sm { display: none; }
+  section { padding: 44px 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>
+      phone-stream
+    </a>
+    <nav>
+      <a class="hide-sm" href="#instalar">Instalar</a>
+      <a class="hide-sm" href="#usar">Usar</a>
+      <a href="https://github.com/uesleinasch/phone-stream">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <span class="eyebrow">Android → Linux</span>
+      <h1>O celular na <em>tela grande</em>, com som.</h1>
+      <p class="lead">Um único comando espelha a tela e o áudio do seu Android no PC, via cabo USB ou Wi-Fi. Feito para assistir no computador os vídeos que estão rodando no celular.</p>
+      <div class="cta">
+        <a class="btn primary" href="#instalar">Instalar</a>
+        <a class="btn" href="https://github.com/uesleinasch/phone-stream">Ver no GitHub</a>
+      </div>
+    </div>
+    <div class="term" aria-label="Exemplo de uso no terminal">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="p">$</span> phone-stream --wifi -q 1080
+<span class="a">→</span> Ativando adb via Wi-Fi em 192.168.0.42:5555...
+<span class="a">→</span> Conectado em 192.168.0.42. Já pode desconectar o cabo.
+<span class="a">→</span> Transmitindo em 1080 (Alt+F alterna tela cheia)
+<span class="c">[server] INFO: Device: [google] Pixel 8 (Android 15)</span>
+<span class="c">INFO: Renderer: opengl</span>
+<span class="c">INFO: Texture: 1920x864</span></pre>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>O que ele faz</h2>
+    <p class="sub">Um script em bash sobre o <a href="https://github.com/Genymobile/scrcpy">scrcpy</a>, com padrões pensados para assistir vídeos.</p>
+    <div class="grid">
+      <div class="card">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
+        <h3>USB ou Wi-Fi</h3>
+        <p>No Wi-Fi, o cabo só é usado na primeira vez. O IP fica salvo e a reconexão é automática.</p>
+      </div>
+      <div class="card">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+        <h3>Áudio no PC</h3>
+        <p>O som sai pelo computador e o celular fica mudo enquanto transmite.</p>
+      </div>
+      <div class="card">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
+        <h3>720p, 1080p ou nativo</h3>
+        <p>Escolha a qualidade com <code>-q</code>. O padrão é 1080p a 8 Mbps.</p>
+      </div>
+      <div class="card">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        <h3>Sem sudo</h3>
+        <p>Baixa o scrcpy oficial com checksum verificado e instala tudo em <code>~/.local</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="instalar">
+  <div class="wrap">
+    <h2>Instalar</h2>
+    <p class="sub">Linux x86_64 e um celular com Android 11 ou mais novo (para o áudio).</p>
+    <div class="steps">
+      <div class="step">
+        <div>
+          <h3>Baixe e instale</h3>
+          <p>O instalador baixa a última versão do scrcpy e cria os comandos <code>phone-stream</code> e <code>scrcpy</code> em <code>~/.local/bin</code>.</p>
+          <div class="code"><button class="copy" type="button">Copiar</button><pre>git clone https://github.com/uesleinasch/phone-stream.git
+cd phone-stream
+./phone-stream --install</pre></div>
+        </div>
+      </div>
+      <div class="step">
+        <div>
+          <h3>Ative a depuração USB no celular</h3>
+          <p><strong>Configurações → Sobre o telefone</strong> → toque 7 vezes em <strong>Número da versão</strong>. Depois, em <strong>Opções do desenvolvedor</strong>, ative <strong>Depuração USB</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div>
+          <h3>Conecte o cabo e autorize</h3>
+          <p>Na primeira conexão o celular pergunta <em>Permitir depuração USB?</em>. Marque <em>Sempre permitir</em> e confirme.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="usar">
+  <div class="wrap">
+    <h2>Usar</h2>
+    <p class="sub">Por padrão abre em tela cheia, a 1080p, com a tela do celular apagada e o protetor de tela do PC desativado.</p>
+    <div class="two">
+      <div class="code"><button class="copy" type="button">Copiar</button><pre><span class="c"># via cabo USB</span>
+phone-stream
+
+<span class="c"># via Wi-Fi (1ª vez com o cabo)</span>
+phone-stream --wifi
+
+<span class="c"># escolher a qualidade</span>
+phone-stream -q 720
+phone-stream -q max
+
+<span class="c"># refazer a configuração do Wi-Fi</span>
+phone-stream --wifi-reset
+
+<span class="c"># repassar opções ao scrcpy</span>
+phone-stream -- --max-fps=30</pre></div>
+      <ul class="keys">
+        <li><kbd>Alt</kbd>+<kbd>F</kbd><span>alterna tela cheia</span></li>
+        <li><kbd>Alt</kbd>+<kbd>O</kbd><span>apaga a tela do celular</span></li>
+        <li><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd><span>acende a tela do celular</span></li>
+        <li>Fechar a janela<span>encerra a transmissão</span></li>
+      </ul>
+    </div>
+
+    <h3 style="margin-top:36px">Qualidade</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Opção</th><th>Resolução (lado maior)</th><th>Bitrate</th><th>Quando usar</th></tr></thead>
+        <tbody>
+          <tr><td class="badge-cell"><code>-q 720</code></td><td>1280 px</td><td>4 Mbps</td><td>Wi-Fi fraco ou PC lento</td></tr>
+          <tr><td class="badge-cell"><code>-q 1080</code><span class="tag">padrão</span></td><td>1920 px</td><td>8 Mbps</td><td>Filmes e séries</td></tr>
+          <tr><td class="badge-cell"><code>-q max</code></td><td>nativa do celular</td><td>16 Mbps</td><td>Melhor imagem, de preferência via USB</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Antes de dar play</h2>
+    <p class="sub">Uma limitação que vem do próprio Android, não do script.</p>
+    <div class="warn">
+      <h3>Apps com DRM aparecem com a tela preta</h3>
+      <p>Netflix, Prime Video, Disney+, Max, Globoplay e outros serviços pagos bloqueiam a captura de tela. O áudio costuma chegar, mas o vídeo fica preto, e não há como contornar sem root. Para esses apps, use o aplicativo ou o site oficial no PC.</p>
+      <p>Funciona com YouTube, players de vídeo locais (VLC, MX Player), navegador e apps sem DRM.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Problemas comuns</h2>
+    <p class="sub">As mensagens do script já indicam o que fazer na maioria dos casos.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Sintoma</th><th>Solução</th></tr></thead>
+        <tbody>
+          <tr><td>Nenhum celular no USB</td><td>Use um cabo de dados (não só de carga) e confira se a Depuração USB está ativa.</td></tr>
+          <tr><td>Celular não autorizado</td><td>Desbloqueie a tela e aceite o pedido de depuração.</td></tr>
+          <tr><td>Sem permissão no USB</td><td><code>sudo apt install android-sdk-platform-tools-common</code> e reconecte o cabo.</td></tr>
+          <tr><td>Trava depois de <code>Device: ...</code> sem abrir a janela</td><td>Problema no driver de áudio. O padrão é <code>pulseaudio</code>; em sistemas só com PipeWire, teste <code>SDL_AUDIO_DRIVER=pipewire phone-stream</code>.</td></tr>
+          <tr><td>Wi-Fi não conecta</td><td>PC e celular precisam estar na mesma rede. Redes de visitantes costumam isolar os aparelhos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Licença MIT · Feito sobre o <a href="https://github.com/Genymobile/scrcpy">scrcpy</a> da Genymobile</span>
+    <a href="https://github.com/uesleinasch/phone-stream">github.com/uesleinasch/phone-stream</a>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.parentElement.querySelector('pre');
+    var text = pre.innerText.split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n').trim();
+    function done() { btn.textContent = 'Copiado'; setTimeout(function () { btn.textContent = 'Copiar'; }, 1500); }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(done, function () {});
+    }
+  });
+});
+</script>
+</body>
+</html>
